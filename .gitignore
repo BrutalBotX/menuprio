@@ -2,3 +2,4 @@ MenuPrio.exe
 MenuPrioTest.exe
 *.log
 *.old
+dist/

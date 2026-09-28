@@ -40,12 +40,12 @@ set "ICON="
 if exist "assets\menuprio.ico" set "ICON=/win32icon:assets\menuprio.ico"
 
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ %ICON% /out:MenuPrio.exe ^
-  /r:"%FW%\System.dll" /r:"%FW%\System.Core.dll" /r:"%FW%\System.Drawing.dll" /r:"%FW%\System.Windows.Forms.dll" /r:"%FW%\System.Web.Extensions.dll" ^
+  /r:"%FW%\System.dll" /r:"%FW%\System.Core.dll" /r:"%FW%\System.Drawing.dll" /r:"%FW%\System.Windows.Forms.dll" ^
   src\*.cs
 if errorlevel 1 ( echo. & echo BUILD FAILED & exit /b 1 )
 
 "%CSC%" /nologo /target:exe /platform:anycpu /optimize+ %ICON% /out:MenuPrioTest.exe ^
-  /r:"%FW%\System.dll" /r:"%FW%\System.Core.dll" /r:"%FW%\System.Drawing.dll" /r:"%FW%\System.Windows.Forms.dll" /r:"%FW%\System.Web.Extensions.dll" ^
+  /r:"%FW%\System.dll" /r:"%FW%\System.Core.dll" /r:"%FW%\System.Drawing.dll" /r:"%FW%\System.Windows.Forms.dll" ^
   src\*.cs
 if errorlevel 1 ( echo. & echo TEST BUILD FAILED & exit /b 1 )
 

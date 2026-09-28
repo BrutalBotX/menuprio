@@ -17,6 +17,15 @@ You get:   OpenCode (because "open" is your word for it)
 Windows only matches its own opaque ranking; MenuPrio matches **while you type**
 and lets you choose the winner with the left pane.
 
+## Download
+
+Grab **MenuPrio.exe** from the [latest release](https://github.com/BrutalBotX/menuprio/releases/latest) —
+a single file, no installer, no runtime download (it uses the .NET Framework
+that is part of Windows 10/11). Run it and the tray icon appears.
+
+> Windows may show a SmartScreen prompt because the exe is unsigned:
+> *More info -> Run anyway*.
+
 ## Features
 
 - **Typing-along matching** — a stored word matches any beginning of it:
@@ -31,6 +40,9 @@ and lets you choose the winner with the left pane.
   wins. Drag it there.
 - **Activity log** — a chronological history of *typed -> opened*.
 - **Pause toggle**, start with Windows, single-instance tray app.
+- **Tiny idle footprint** — the tray icon/menu are native Win32 and the history
+  format is hand-rolled JSON, so neither WinForms nor System.Web is loaded until
+  you open the window. Idle: ~8 MB working set (trimmed), ~18 MB private.
 - No admin rights, no runtime to install: compiles against the .NET Framework
   that ships with Windows.
 
@@ -61,6 +73,18 @@ MenuPrio.exe --ui         start with the Priorities window open
 MenuPrio.exe --console    also show a live log window
 MenuPrio.exe --verbose    log every buffered keystroke too
 ```
+
+### Cutting a release
+
+```
+powershell -ExecutionPolicy Bypass -File tools\publish-release.ps1
+```
+
+Builds the exe, reads the version from `src/AssemblyInfo.cs`, packs
+`MenuPrio.exe` + `README.md` + `LICENSE` into `dist\MenuPrio-<version>-win.zip`
+and publishes a GitHub release with both assets. It reuses the credentials git
+already has for `origin` (nothing new to log in to). Optional parameters:
+`-Version 1.2.0`, `-Notes "..."`, `-SkipBuild`.
 
 ## How matching works
 
@@ -125,6 +149,16 @@ if you edited it, use tray -> **Import rules.ini** to merge again.
   switching back to an already running window is ignored.
 - Manual picks (arrow keys) are never overridden — interception is skipped for
   that Enter; the chosen app is recorded instead.
+
+### Memory
+
+The idle process is deliberately small: the tray window, popup menu and message
+loop are native Win32 (no `System.Windows.Forms`), and `history.json` is
+written by a small built-in JSON writer/reader (no `System.Web.Extensions`).
+WinForms and System.Drawing only load when you open the Priorities window, and
+the working set is trimmed with `EmptyWorkingSet` after start and every five
+minutes. Measured on Windows 11: ~8 MB working set / ~18 MB private idle,
+~33 MB working set with the window open.
 
 ## Known limitations
 

@@ -25,6 +25,7 @@ namespace MenuPrio
             failures += RuleTests(root);
             failures += MatchingTests(root);
             failures += EditingTests(root);
+            failures += JsonTests(root);
 
             Console.WriteLine("------------------");
             Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURE(S)");
@@ -155,6 +156,51 @@ namespace MenuPrio
             File.WriteAllText(rules2, "exact term = C:\\t\\wt.exe\r\n");
             int added = store.ImportRulesFile(rules2);
             f += Check("rules import adds candidate", added == 1 && store.Find("term") != null);
+
+            return f;
+        }
+
+        // ---------------- JSON round-trip ----------------
+
+        private static int JsonTests(string root)
+        {
+            int f = 0;
+            Console.WriteLine("json:");
+
+            var rulesPath = Path.Combine(root, "json-rules.ini");
+            File.WriteAllText(rulesPath, "exact open = C:\\x\\OpenCode.exe\r\n");
+            var storePath = Path.Combine(root, "json-history.json");
+
+            var store = new HistoryStore(storePath, rulesPath);
+            store.AddCandidate("weird", new Candidate
+            {
+                Name = "Quote \" and backslash \\ app",
+                Target = "C:\\Program Files\\A \"weird\" app\\app.exe",
+                Args = "--msg \"line1\\nline2\" --tab\tend",
+                WorkDir = "C:\\temp\\caf\u00e9",
+                Source = "manual"
+            });
+            store.RecordLaunch(store.Find("weird"), "weird", "menu");
+
+            var store2 = new HistoryStore(storePath, rulesPath);
+            var w = FindGroup(store2, "weird");
+            f += Check("quotes and backslashes survive", w != null && w.Candidates.Count == 1
+                && w.Candidates[0].Name == "Quote \" and backslash \\ app"
+                && w.Candidates[0].Target == "C:\\Program Files\\A \"weird\" app\\app.exe");
+            f += Check("escapes and unicode survive", w != null
+                && w.Candidates[0].Args == "--msg \"line1\\nline2\" --tab\tend"
+                && w.Candidates[0].WorkDir == "C:\\temp\\caf\u00e9");
+            f += Check("stats survive", w != null && w.Candidates[0].Count == 1);
+            f += Check("events survive", store2.SnapshotEvents(10).Count == 1);
+
+            store2.RecordObserved("nulls", "cmd", "C:\\Windows\\System32\\cmd.exe", null, null, "observed");
+            var store3 = new HistoryStore(storePath, rulesPath);
+            f += Check("null fields survive", FindGroup(store3, "nulls") != null);
+
+            var badPath = Path.Combine(root, "bad-history.json");
+            File.WriteAllText(badPath, "{oops");
+            var badStore = new HistoryStore(badPath, rulesPath);
+            f += Check("corrupt file recovers", badStore.Find("open") != null && File.Exists(badPath + ".bad"));
 
             return f;
         }

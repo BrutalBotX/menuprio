@@ -30,7 +30,7 @@ namespace MenuPrio
             _store = store;
             _interceptor = interceptor;
 
-            Text = "MenuPrio - Start Enter priorities";
+            Text = "MenuPrio " + Program.Version() + " - Start Enter priorities";
             ClientSize = new Size(980, 600);
             MinimumSize = new Size(800, 460);
             StartPosition = FormStartPosition.CenterScreen;
@@ -792,6 +792,23 @@ namespace MenuPrio
             box.SetBounds(116, y, 392, 24);
             Controls.Add(l);
             Controls.Add(box);
+        }
+    }
+
+    internal static class AppIcons
+    {
+        public static Icon Get()
+        {
+            try
+            {
+                var ic = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (ic != null) return ic;
+            }
+            catch
+            {
+                // fall through to the default icon
+            }
+            return SystemIcons.Application;
         }
     }
 }

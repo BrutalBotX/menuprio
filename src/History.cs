@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Script.Serialization;
 
 namespace MenuPrio
 {
@@ -91,15 +90,6 @@ namespace MenuPrio
     {
         public const int MaxEvents = 400;
 
-        private static readonly JavaScriptSerializer Json = CreateSerializer();
-        private static JavaScriptSerializer CreateSerializer()
-        {
-            var s = new JavaScriptSerializer();
-            s.MaxJsonLength = int.MaxValue;
-            s.RecursionLimit = 64;
-            return s;
-        }
-
         private readonly object _sync = new object();
         private readonly string _path;
         private readonly string _rulesPath;
@@ -145,7 +135,7 @@ namespace MenuPrio
                     try
                     {
                         var json = File.ReadAllText(_path);
-                        var data = Json.Deserialize<HistoryData>(json);
+                        var data = Json.Read(json);
                         if (data != null)
                         {
                             _data = Sanitize(data);
@@ -672,7 +662,7 @@ namespace MenuPrio
         {
             try
             {
-                var json = Json.Serialize(_data);
+                var json = Json.Write(_data);
                 var tmp = _path + ".tmp";
                 File.WriteAllText(tmp, json);
                 if (File.Exists(_path)) File.Replace(tmp, _path, null);
