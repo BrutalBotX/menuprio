@@ -191,6 +191,7 @@ namespace MenuPrio
                 && w.Candidates[0].Args == "--msg \"line1\\nline2\" --tab\tend"
                 && w.Candidates[0].WorkDir == "C:\\temp\\caf\u00e9");
             f += Check("stats survive", w != null && w.Candidates[0].Count == 1);
+            f += Check("last used survives", w != null && w.Candidates[0].LastUsed > DateTime.Now.AddMinutes(-10));
             f += Check("events survive", store2.SnapshotEvents(10).Count == 1);
 
             store2.RecordObserved("nulls", "cmd", "C:\\Windows\\System32\\cmd.exe", null, null, "observed");

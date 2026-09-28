@@ -519,6 +519,31 @@ namespace MenuPrio
             }
         }
 
+        /// <summary>Creates an empty word. It starts matching once it has apps.</summary>
+        public void AddGroup(string key)
+        {
+            key = Normalize(key);
+            if (key.Length == 0) return;
+
+            lock (_sync)
+            {
+                if (_data.Groups.ContainsKey(key)) return;
+                var g = new HistoryGroup { Key = key };
+                _data.Groups[key] = g;
+                EnsureOrder(_data, key);
+                SaveLocked();
+            }
+        }
+
+        public void ClearEvents()
+        {
+            lock (_sync)
+            {
+                _data.Events.Clear();
+                SaveLocked();
+            }
+        }
+
         /// <summary>Picks the matching group for a typed text, read-only (used by the UI preview).</summary>
         public HistoryMatch Preview(string typed)
         {

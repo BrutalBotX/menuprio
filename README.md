@@ -43,6 +43,8 @@ that is part of Windows 10/11). Run it and the tray icon appears.
 - **Tiny idle footprint** — the tray icon/menu are native Win32 and the history
   format is hand-rolled JSON, so neither WinForms nor System.Web is loaded until
   you open the window. Idle: ~8 MB working set (trimmed), ~18 MB private.
+- **Crisp on scaled displays** — the window is DPI-aware and scales its layout
+  (tested at 200%) instead of being bitmap-stretched.
 - No admin rights, no runtime to install: compiles against the .NET Framework
   that ships with Windows.
 
@@ -105,6 +107,12 @@ The right pane order decides which *app* wins when a word matches: the top app
 is launched.
 
 ## Priorities window
+
+![Priorities](assets/ui-priorities.png)
+
+*The top app under a word is what Enter opens. The Activity tab keeps the log:*
+
+![Activity](assets/ui-activity.png)
 
 - **Left pane** — every typed text, in priority order. Drag to reorder.
   `Up`/`Down`/`Delete` buttons below. `[exact]` marks exact-only words.

@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
 namespace MenuPrio
 {
-    internal sealed class PriorityForm : Form
+    internal sealed class PriorityForm : ScaledForm
     {
+        private static readonly Color HeaderColor = Color.FromArgb(79, 70, 229);
+        private static readonly Color HeaderSubColor = Color.FromArgb(214, 214, 255);
+
         private readonly HistoryStore _store;
         private readonly Interceptor _interceptor;
 
@@ -16,6 +20,9 @@ namespace MenuPrio
         private readonly ListView _events = new ListView();
         private readonly CheckBox _strict = new CheckBox();
         private readonly CheckBox _pause = new CheckBox();
+        private readonly Label _groupsEmpty = new Label();
+        private readonly Label _candidatesEmpty = new Label();
+        private readonly PictureBox _headerIcon = new PictureBox();
         private readonly Timer _timer = new Timer();
         private readonly ImageList _icons = new ImageList();
         private readonly Dictionary<string, int> _iconIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -24,6 +31,7 @@ namespace MenuPrio
         private bool _syncing;
         private bool _dragging;
         private string _selectedKey;
+        private SplitContainer _split;
 
         public PriorityForm(HistoryStore store, Interceptor interceptor)
         {
@@ -31,84 +39,212 @@ namespace MenuPrio
             _interceptor = interceptor;
 
             Text = "MenuPrio " + Program.Version() + " - Start Enter priorities";
-            ClientSize = new Size(980, 600);
-            MinimumSize = new Size(800, 460);
+            Font = new Font("Segoe UI", 9F);
+            AutoScaleMode = AutoScaleMode.None;
+            ClientSize = new Size(1000, 640);
+            MinimumSize = new Size(840, 520);
             StartPosition = FormStartPosition.CenterScreen;
             Icon = AppIcons.Get();
 
             _icons.ImageSize = new Size(16, 16);
             _icons.ColorDepth = ColorDepth.Depth32Bit;
 
+            var root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.ColumnCount = 1;
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            root.RowCount = 3;
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+
             var tabs = new TabControl();
             tabs.Dock = DockStyle.Fill;
+            tabs.Padding = new Point(14, 5);
             tabs.TabPages.Add(BuildPrioritiesTab());
             tabs.TabPages.Add(BuildActivityTab());
-            Controls.Add(tabs);
+
+            root.Controls.Add(BuildHeader(), 0, 0);
+            root.Controls.Add(tabs, 0, 1);
+            root.Controls.Add(BuildStatusBar(), 0, 2);
+            Controls.Add(root);
 
             _timer.Interval = 1200;
             _timer.Tick += delegate { RefreshData(); };
             _timer.Start();
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e); // sets up the DPI scale
+
+            try
+            {
+                int iconSize = ToDevice(16);
+                _icons.ImageSize = new Size(iconSize, iconSize);
+
+                int logoSize = ToDevice(30);
+                _headerIcon.Image = new Bitmap(AppIcons.Get().ToBitmap(), new Size(logoSize, logoSize));
+            }
+            catch
+            {
+                // icons fall back to defaults
+            }
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+
+            // SplitterDistance set before layout gets clamped, so set it now
+            try
+            {
+                if (_split != null) _split.SplitterDistance = ToDevice(290);
+            }
+            catch
+            {
+                // keep the default split if this fails
+            }
+
+            // never open half off-screen
+            try
+            {
+                var area = Screen.FromControl(this).WorkingArea;
+                var b = Bounds;
+                if (b.Left < area.Left || b.Top < area.Top || b.Right > area.Right || b.Bottom > area.Bottom)
+                {
+                    int x = Math.Min(Math.Max(b.Left, area.Left), Math.Max(area.Left, area.Right - b.Width));
+                    int y = Math.Min(Math.Max(b.Top, area.Top), Math.Max(area.Top, area.Bottom - b.Height));
+                    Location = new Point(x, y);
+                }
+            }
+            catch
+            {
+                // positioning is best effort
+            }
 
             RefreshData();
         }
 
-        // ---------------- layout ----------------
+        // ---------------- header / status ----------------
 
-        private TabPage BuildPrioritiesTab()
+        private Control BuildHeader()
         {
-            var page = new TabPage("Priorities");
-            page.Padding = new Padding(8);
+            var header = new Panel();
+            header.Dock = DockStyle.Fill;
+            header.BackColor = HeaderColor;
 
-            var root = new TableLayoutPanel();
-            root.Dock = DockStyle.Fill;
-            root.ColumnCount = 1;
-            root.RowCount = 2;
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            _headerIcon.SizeMode = PictureBoxSizeMode.Zoom;
+            _headerIcon.SetBounds(14, 14, 30, 30);
 
-            var toolbar = new Panel();
-            toolbar.Dock = DockStyle.Fill;
+            var title = new Label();
+            title.Text = "MenuPrio";
+            title.ForeColor = Color.White;
+            title.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            title.AutoSize = true;
+            title.Location = new Point(54, 8);
 
-            var buttons = new FlowLayoutPanel();
-            buttons.Dock = DockStyle.Left;
-            buttons.AutoSize = true;
-            buttons.WrapContents = false;
-            buttons.FlowDirection = FlowDirection.LeftToRight;
-
-            var add = NewButton("Add app...");
-            add.Click += delegate { AddApp(); };
-            var edit = NewButton("Edit...");
-            edit.Click += delegate { EditSelected(); };
-            var remove = NewButton("Remove");
-            remove.Click += delegate { RemoveSelected(); };
-            var up = NewButton("Up");
-            up.Click += delegate { MoveSelected(-1); };
-            var down = NewButton("Down");
-            down.Click += delegate { MoveSelected(1); };
-            buttons.Controls.Add(add);
-            buttons.Controls.Add(edit);
-            buttons.Controls.Add(remove);
-            buttons.Controls.Add(up);
-            buttons.Controls.Add(down);
+            var subtitle = new Label();
+            subtitle.Text = "v" + Program.Version() + "  -  what Enter opens in the Start menu";
+            subtitle.ForeColor = HeaderSubColor;
+            subtitle.AutoSize = true;
+            subtitle.Location = new Point(56, 31);
 
             _pause.Text = "Pause interception";
+            _pause.ForeColor = Color.White;
+            _pause.BackColor = Color.Transparent;
             _pause.AutoSize = true;
-            _pause.Dock = DockStyle.Right;
-            _pause.Padding = new Padding(0, 8, 4, 0);
             _pause.CheckedChanged += delegate
             {
                 if (!_refreshing) _interceptor.Paused = _pause.Checked;
             };
+            header.Resize += delegate
+            {
+                _pause.Location = new Point(header.ClientSize.Width - _pause.Width - 16, 20);
+            };
 
-            toolbar.Controls.Add(buttons);
-            toolbar.Controls.Add(_pause);
+            header.Controls.Add(_headerIcon);
+            header.Controls.Add(title);
+            header.Controls.Add(subtitle);
+            header.Controls.Add(_pause);
+            return header;
+        }
+
+        private Control BuildStatusBar()
+        {
+            var panel = new Panel();
+            panel.Dock = DockStyle.Fill;
+            panel.BackColor = SystemColors.Control;
+            panel.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(SystemColors.ControlDark))
+                    e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
+            };
+
+            var hint = new Label();
+            hint.Text = "The top app opens when you press Enter. Left pane order breaks ties between similar words.";
+            hint.AutoSize = true;
+            hint.ForeColor = SystemColors.GrayText;
+            hint.Location = new Point(10, 6);
+
+            var link = new LinkLabel();
+            link.Text = "GitHub";
+            link.AutoSize = true;
+            link.LinkClicked += delegate { OpenUrl("https://github.com/BrutalBotX/menuprio"); };
+            panel.Resize += delegate
+            {
+                link.Location = new Point(panel.ClientSize.Width - link.Width - 12, 6);
+            };
+
+            panel.Controls.Add(hint);
+            panel.Controls.Add(link);
+            return panel;
+        }
+
+        // ---------------- tabs ----------------
+
+        private TabPage BuildPrioritiesTab()
+        {
+            var page = new TabPage("Priorities");
+            page.BackColor = SystemColors.Control;
+
+            var root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.ColumnCount = 1;
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            root.RowCount = 2;
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.Padding = new Padding(10, 6, 10, 8);
+
+            var toolbar = new FlowLayoutPanel();
+            toolbar.Dock = DockStyle.Fill;
+            toolbar.WrapContents = false;
+            toolbar.FlowDirection = FlowDirection.LeftToRight;
+
+            var add = NewButton("Add app...", 92);
+            add.Click += delegate { AddApp(); };
+            var edit = NewButton("Edit...", 68);
+            edit.Click += delegate { EditSelected(); };
+            var remove = NewButton("Remove", 76);
+            remove.Click += delegate { RemoveSelected(); };
+            var up = NewButton("Up", 52);
+            up.Click += delegate { MoveSelected(-1); };
+            var down = NewButton("Down", 60);
+            down.Click += delegate { MoveSelected(1); };
+            toolbar.Controls.Add(add);
+            toolbar.Controls.Add(edit);
+            toolbar.Controls.Add(remove);
+            toolbar.Controls.Add(up);
+            toolbar.Controls.Add(down);
 
             var split = new SplitContainer();
             split.Dock = DockStyle.Fill;
-            split.SplitterDistance = 260;
+            split.SplitterDistance = 290;
             split.FixedPanel = FixedPanel.Panel1;
             split.Panel1.Controls.Add(BuildGroupsPanel());
             split.Panel2.Controls.Add(BuildCandidatesPanel());
+            _split = split;
 
             root.Controls.Add(toolbar, 0, 0);
             root.Controls.Add(split, 0, 1);
@@ -121,16 +257,17 @@ namespace MenuPrio
             var grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
             grid.ColumnCount = 1;
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             grid.RowCount = 3;
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
             grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
             var label = new Label();
-            label.Text = "Typed text - the top one wins when several words match what you type.";
+            label.Text = "Words you type";
             label.Dock = DockStyle.Fill;
             label.TextAlign = ContentAlignment.MiddleLeft;
-            label.ForeColor = SystemColors.GrayText;
+            label.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
 
             _groups.View = View.Details;
             _groups.HeaderStyle = ColumnHeaderStyle.None;
@@ -139,32 +276,45 @@ namespace MenuPrio
             _groups.MultiSelect = false;
             _groups.HideSelection = false;
             _groups.AllowDrop = true;
-            _groups.Columns.Add("Typed text", 220);
+            _groups.BorderStyle = BorderStyle.FixedSingle;
+            _groups.Columns.Add("Word", 200);
             _groups.SelectedIndexChanged += delegate { GroupSelectionChanged(); };
             _groups.ItemDrag += GroupsItemDrag;
             _groups.DragEnter += GroupsDragEnter;
             _groups.DragOver += GroupsDragOver;
             _groups.DragDrop += GroupsDragDrop;
             _groups.DragLeave += delegate { _groups.InsertionMark.Index = -1; };
+            _groups.Resize += delegate { FitGroupColumn(); };
+
+            _groupsEmpty.Text = "Nothing here yet.\r\n\r\nType something in Start and\r\nopen the app once - it will\r\nshow up here.";
+            _groupsEmpty.Dock = DockStyle.Fill;
+            _groupsEmpty.TextAlign = ContentAlignment.MiddleCenter;
+            _groupsEmpty.ForeColor = SystemColors.GrayText;
+            _groupsEmpty.Visible = false;
 
             var bottom = new FlowLayoutPanel();
             bottom.Dock = DockStyle.Fill;
             bottom.WrapContents = false;
-            bottom.FlowDirection = FlowDirection.LeftToRight;
+            bottom.Padding = new Padding(0, 7, 0, 0);
 
-            var up = NewButton("Up");
+            var newWord = NewButton("New word...", 88);
+            newWord.Click += delegate { NewWord(); };
+            var up = NewButton("Up", 42);
             up.Click += delegate { MoveSelectedGroup(-1); };
-            var down = NewButton("Down");
+            var down = NewButton("Down", 50);
             down.Click += delegate { MoveSelectedGroup(1); };
-            var del = NewButton("Delete");
+            var del = NewButton("Delete", 56);
             del.Click += delegate { DeleteGroup(); };
+            bottom.Controls.Add(newWord);
             bottom.Controls.Add(up);
             bottom.Controls.Add(down);
             bottom.Controls.Add(del);
 
             grid.Controls.Add(label, 0, 0);
             grid.Controls.Add(_groups, 0, 1);
+            grid.Controls.Add(_groupsEmpty, 0, 1);
             grid.Controls.Add(bottom, 0, 2);
+            _groupsEmpty.BringToFront();
             return grid;
         }
 
@@ -173,16 +323,17 @@ namespace MenuPrio
             var grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
             grid.ColumnCount = 1;
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             grid.RowCount = 3;
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
             grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
-            var hint = new Label();
-            hint.Text = "Enter opens the top item. Drag rows to reorder. Apps appear here after you use them, or add manually.";
-            hint.Dock = DockStyle.Fill;
-            hint.TextAlign = ContentAlignment.MiddleLeft;
-            hint.ForeColor = SystemColors.GrayText;
+            var label = new Label();
+            label.Text = "Apps - the top one opens on Enter";
+            label.Dock = DockStyle.Fill;
+            label.TextAlign = ContentAlignment.MiddleLeft;
+            label.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
 
             _candidates.View = View.Details;
             _candidates.Dock = DockStyle.Fill;
@@ -191,17 +342,25 @@ namespace MenuPrio
             _candidates.HideSelection = false;
             _candidates.AllowDrop = true;
             _candidates.SmallImageList = _icons;
-            _candidates.Columns.Add("#", 36);
-            _candidates.Columns.Add("Name", 190);
+            _candidates.BorderStyle = BorderStyle.FixedSingle;
+            _candidates.Columns.Add("#", 32);
+            _candidates.Columns.Add("Name", 170);
             _candidates.Columns.Add("Target", 340);
-            _candidates.Columns.Add("Used", 54);
-            _candidates.Columns.Add("Last used", 130);
+            _candidates.Columns.Add("Used", 50);
+            _candidates.Columns.Add("Last used", 120);
             _candidates.ItemDrag += CandidatesItemDrag;
             _candidates.DragEnter += CandidatesDragEnter;
             _candidates.DragOver += CandidatesDragOver;
             _candidates.DragDrop += CandidatesDragDrop;
             _candidates.DragLeave += delegate { _candidates.InsertionMark.Index = -1; };
             _candidates.DoubleClick += delegate { EditSelected(); };
+            _candidates.Resize += delegate { FitCandidateColumns(); };
+
+            _candidatesEmpty.Text = "No apps for this word yet.\r\n\r\nUse \"Add app...\" above, or drag\r\na file from Explorer into the list.";
+            _candidatesEmpty.Dock = DockStyle.Fill;
+            _candidatesEmpty.TextAlign = ContentAlignment.MiddleCenter;
+            _candidatesEmpty.ForeColor = SystemColors.GrayText;
+            _candidatesEmpty.Visible = false;
 
             _strict.Text = "Exact match only (don't match while typing)";
             _strict.AutoSize = true;
@@ -218,52 +377,116 @@ namespace MenuPrio
             bottom.Dock = DockStyle.Fill;
             bottom.Controls.Add(_strict);
 
-            grid.Controls.Add(hint, 0, 0);
+            grid.Controls.Add(label, 0, 0);
             grid.Controls.Add(_candidates, 0, 1);
+            grid.Controls.Add(_candidatesEmpty, 0, 1);
             grid.Controls.Add(bottom, 0, 2);
+            _candidatesEmpty.BringToFront();
             return grid;
         }
 
         private TabPage BuildActivityTab()
         {
             var page = new TabPage("Activity");
+            page.BackColor = SystemColors.Control;
 
-            var grid = new TableLayoutPanel();
-            grid.Dock = DockStyle.Fill;
-            grid.ColumnCount = 1;
-            grid.RowCount = 2;
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            var root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.ColumnCount = 1;
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            root.RowCount = 2;
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.Padding = new Padding(10, 6, 10, 8);
+
+            var toolbar = new Panel();
+            toolbar.Dock = DockStyle.Fill;
 
             var label = new Label();
             label.Text = "History of what you typed and what opened (newest first).";
-            label.Dock = DockStyle.Fill;
-            label.TextAlign = ContentAlignment.MiddleLeft;
+            label.AutoSize = true;
             label.ForeColor = SystemColors.GrayText;
+            label.Location = new Point(0, 9);
+
+            var clear = NewButton("Clear history", 92);
+            clear.Location = new Point(200, 2);
+            clear.Click += delegate { ClearHistory(); };
+            toolbar.Resize += delegate
+            {
+                clear.Location = new Point(toolbar.ClientSize.Width - clear.Width, 2);
+            };
+
+            toolbar.Controls.Add(label);
+            toolbar.Controls.Add(clear);
 
             _events.View = View.Details;
             _events.Dock = DockStyle.Fill;
             _events.FullRowSelect = true;
             _events.HideSelection = false;
-            _events.Columns.Add("Time", 140);
+            _events.BorderStyle = BorderStyle.FixedSingle;
+            _events.Columns.Add("Time", 150);
             _events.Columns.Add("Typed", 110);
-            _events.Columns.Add("Opened", 170);
-            _events.Columns.Add("Target", 400);
+            _events.Columns.Add("Opened", 180);
+            _events.Columns.Add("Target", 380);
             _events.Columns.Add("Source", 80);
+            _events.Resize += delegate { FitEventColumns(); };
 
-            grid.Controls.Add(label, 0, 0);
-            grid.Controls.Add(_events, 0, 1);
-            page.Controls.Add(grid);
+            root.Controls.Add(toolbar, 0, 0);
+            root.Controls.Add(_events, 0, 1);
+            page.Controls.Add(root);
             return page;
         }
 
-        private static Button NewButton(string text)
+        private static Button NewButton(string text, int width)
         {
             var b = new Button();
             b.Text = text;
-            b.AutoSize = true;
-            b.Margin = new Padding(0, 0, 6, 0);
+            b.AutoSize = false;
+            b.Size = new Size(width, 27);
+            b.FlatStyle = FlatStyle.System;
+            b.Margin = new Padding(0, 0, 8, 0);
             return b;
+        }
+
+        // ---------------- column fitting ----------------
+
+        private void FitGroupColumn()
+        {
+            if (_groups.Columns.Count == 0) return;
+            _groups.Columns[0].Width = Math.Max(
+                ToDevice(80), _groups.ClientSize.Width - ToDevice(4));
+        }
+
+        private void FitCandidateColumns()
+        {
+            if (_candidates.Columns.Count < 5) return;
+
+            _candidates.Columns[0].Width = ToDevice(34);
+            _candidates.Columns[1].Width = ToDevice(170);
+            _candidates.Columns[3].Width = ToDevice(50);
+            _candidates.Columns[4].Width = ToDevice(120);
+
+            int used = _candidates.Columns[0].Width + _candidates.Columns[1].Width
+                + _candidates.Columns[3].Width + _candidates.Columns[4].Width + ToDevice(10);
+            int target = _candidates.ClientSize.Width - used;
+            if (target < ToDevice(120)) target = ToDevice(120);
+            _candidates.Columns[2].Width = target;
+        }
+
+        private void FitEventColumns()
+        {
+            if (_events.Columns.Count < 5) return;
+
+            _events.Columns[0].Width = ToDevice(150);
+            _events.Columns[1].Width = ToDevice(110);
+            _events.Columns[2].Width = ToDevice(180);
+            _events.Columns[4].Width = ToDevice(80);
+
+            int used = _events.Columns[0].Width + _events.Columns[1].Width
+                + _events.Columns[2].Width + _events.Columns[4].Width + ToDevice(10);
+            int target = _events.ClientSize.Width - used;
+            if (target < ToDevice(120)) target = ToDevice(120);
+            _events.Columns[3].Width = target;
         }
 
         // ---------------- refresh ----------------
@@ -306,6 +529,10 @@ namespace MenuPrio
                 _syncing = true;
                 _pause.Checked = _interceptor.Paused;
                 _syncing = false;
+
+                FitGroupColumn();
+                FitCandidateColumns();
+                FitEventColumns();
             }
             finally
             {
@@ -353,6 +580,9 @@ namespace MenuPrio
             }
 
             _candidates.EndUpdate();
+
+            _candidatesEmpty.Visible = _candidates.Items.Count == 0;
+            if (_candidatesEmpty.Visible) _candidatesEmpty.BringToFront();
 
             _syncing = true;
             _strict.Checked = g != null && g.Strict;
@@ -452,6 +682,29 @@ namespace MenuPrio
 
             _selectedKey = key;
             RefreshData();
+        }
+
+        private void NewWord()
+        {
+            var key = PromptForm.Ask(this, "New word", "When you type this in Start:");
+            if (string.IsNullOrEmpty(key)) return;
+
+            key = key.Trim().ToLowerInvariant();
+            _store.AddGroup(key);
+            _selectedKey = key;
+            RefreshData();
+            AddApp();
+        }
+
+        private void ClearHistory()
+        {
+            var answer = MessageBox.Show(this,
+                "Clear the activity log? Priorities and apps are kept.",
+                "MenuPrio", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+            if (answer != DialogResult.OK) return;
+
+            _store.ClearEvents();
+            PopulateEvents();
         }
 
         private Candidate SelectedCandidate()
@@ -642,6 +895,12 @@ namespace MenuPrio
 
         // ---------------- misc ----------------
 
+        private static void OpenUrl(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch { }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -668,13 +927,13 @@ namespace MenuPrio
 
             public string Text
             {
-                get { return Key + (Strict ? "   [exact]" : "") + "   (" + Count + ")"; }
+                get { return Key + (Strict ? "   [exact]" : "") + "    (" + Count + ")"; }
             }
         }
     }
 
     /// <summary>Tiny one-field prompt.</summary>
-    internal sealed class PromptForm : Form
+    internal sealed class PromptForm : ScaledForm
     {
         private readonly TextBox _box = new TextBox();
         private readonly Label _label = new Label();
@@ -691,6 +950,8 @@ namespace MenuPrio
 
         private PromptForm()
         {
+            Font = new Font("Segoe UI", 9F);
+            AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(360, 130);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
@@ -721,7 +982,7 @@ namespace MenuPrio
     }
 
     /// <summary>Edit name / target / args / working dir of one candidate.</summary>
-    internal sealed class CandidateForm : Form
+    internal sealed class CandidateForm : ScaledForm
     {
         private readonly TextBox _name = new TextBox();
         private readonly TextBox _target = new TextBox();
@@ -756,6 +1017,8 @@ namespace MenuPrio
 
         private CandidateForm()
         {
+            Font = new Font("Segoe UI", 9F);
+            AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(520, 210);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;

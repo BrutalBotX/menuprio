@@ -10,6 +10,10 @@ namespace MenuPrio
         [STAThread]
         private static void Main(string[] args)
         {
+            // crisp UI on scaled displays instead of a bitmap-stretched window
+            try { NativeMethods.SetProcessDPIAware(); }
+            catch { }
+
             if (HasArg(args, "--console")) NativeMethods.AllocConsole();
             if (HasArg(args, "--verbose")) Log.Verbose = true;
 

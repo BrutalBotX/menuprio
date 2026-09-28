@@ -128,6 +128,10 @@ namespace MenuPrio
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool AllocConsole();
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetProcessDPIAware();
+
         // ---------------- message-only window / message loop ----------------
 
         public const uint WM_NULL = 0x0000;
