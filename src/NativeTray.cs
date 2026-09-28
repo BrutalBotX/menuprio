@@ -16,7 +16,7 @@ namespace MenuPrio
         private const string WindowClass = "MenuPrioTrayWindow";
         private const uint TrayMessage = NativeMethods.WM_APP + 1;
         private const uint TrimTimerId = 1;
-        private const int TrimIntervalMs = 5 * 60 * 1000;
+        private const int TrimIntervalMs = 60 * 1000;
 
         private const int CmdPriorities = 1;
         private const int CmdPause = 2;
@@ -271,6 +271,7 @@ namespace MenuPrio
             {
                 _form = null;
                 Interlocked.Exchange(ref _formRunning, 0);
+                TrimWorkingSet(); // give the UI's memory back right away
             }
         }
 
@@ -325,8 +326,17 @@ namespace MenuPrio
 
         private static void TrimWorkingSet()
         {
-            try { NativeMethods.EmptyWorkingSet(NativeMethods.GetCurrentProcess()); }
-            catch { }
+            try
+            {
+                // collect first, then let Windows page out what is no longer needed
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                NativeMethods.EmptyWorkingSet(NativeMethods.GetCurrentProcess());
+            }
+            catch
+            {
+            }
         }
 
         private static void OpenPath(string path)

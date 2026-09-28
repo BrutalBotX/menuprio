@@ -236,15 +236,10 @@ namespace MenuPrio
 
                 if (pid != 0 && pid != (uint)_ourPid)
                 {
-                    Process p = null;
-                    try { p = Process.GetProcessById((int)pid); } catch { }
-
-                    if (p != null && !_config.IsLauncherProcess(p.ProcessName))
+                    var info = InspectProcess((int)pid, started);
+                    if (info != null && !_config.IsLauncherProcess(info.Name))
                     {
-                        bool fresh = false;
-                        try { fresh = p.StartTime >= started.AddMilliseconds(-2500); } catch { }
-
-                        if (!fresh) return; // user switched back to an existing window
+                        if (!info.Fresh) return; // user switched back to an existing window
 
                         if (_suppressObservationOnce)
                         {
@@ -252,19 +247,43 @@ namespace MenuPrio
                             return; // MenuPrio launched it and already recorded it
                         }
 
-                        string target = null;
-                        try { target = p.MainModule.FileName; } catch { }
-                        string name = HistoryStore.FriendlyName(target);
-                        if (string.IsNullOrEmpty(name)) name = p.ProcessName;
+                        string name = HistoryStore.FriendlyName(info.Target);
+                        if (string.IsNullOrEmpty(name)) name = info.Name;
 
                         Log.Info("observed: \"" + typed + "\" -> " + name
-                            + (target != null ? " (" + target + ")" : ""));
-                        _store.RecordObserved(typed, name, target, "", "", "observed");
+                            + (info.Target != null ? " (" + info.Target + ")" : ""));
+                        _store.RecordObserved(typed, name, info.Target, "", "", "observed");
                         return;
                     }
                 }
 
                 Thread.Sleep(100);
+            }
+        }
+
+        private sealed class ProcessInfo
+        {
+            public string Name;
+            public string Target;
+            public bool Fresh;
+        }
+
+        private static ProcessInfo InspectProcess(int pid, DateTime started)
+        {
+            try
+            {
+                using (var p = Process.GetProcessById(pid))
+                {
+                    var info = new ProcessInfo();
+                    info.Name = p.ProcessName;
+                    try { info.Fresh = p.StartTime >= started.AddMilliseconds(-2500); } catch { }
+                    try { info.Target = p.MainModule.FileName; } catch { }
+                    return info;
+                }
+            }
+            catch
+            {
+                return null;
             }
         }
 

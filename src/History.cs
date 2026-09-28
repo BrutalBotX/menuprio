@@ -178,15 +178,15 @@ namespace MenuPrio
 
             // keep only known groups, remove duplicates, append missing ones alphabetically
             var order = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seen = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (var raw in data.GroupOrder)
             {
                 var k = Normalize(raw);
-                if (groups.ContainsKey(k) && seen.Add(k)) order.Add(k);
+                if (groups.ContainsKey(k) && !seen.ContainsKey(k)) { seen[k] = true; order.Add(k); }
             }
             var missing = new List<string>();
             foreach (var k in groups.Keys)
-                if (!seen.Contains(k)) missing.Add(k);
+                if (!seen.ContainsKey(k)) missing.Add(k);
             missing.Sort(StringComparer.OrdinalIgnoreCase);
             order.AddRange(missing);
             data.GroupOrder = order;
@@ -559,15 +559,23 @@ namespace MenuPrio
                 EnsureAllGroupsInOrderLocked();
 
                 var list = new List<HistoryGroup>();
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seen = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var k in _data.GroupOrder)
                 {
                     HistoryGroup g;
-                    if (_data.Groups.TryGetValue(k, out g) && seen.Add(k)) list.Add(g.Clone());
+                    if (_data.Groups.TryGetValue(k, out g) && !seen.ContainsKey(k))
+                    {
+                        seen[k] = true;
+                        list.Add(g.Clone());
+                    }
                 }
                 foreach (var kv in _data.Groups)
-                    if (seen.Add(kv.Key)) list.Add(kv.Value.Clone());
+                    if (!seen.ContainsKey(kv.Key))
+                    {
+                        seen[kv.Key] = true;
+                        list.Add(kv.Value.Clone());
+                    }
 
                 return list;
             }
@@ -588,10 +596,13 @@ namespace MenuPrio
         {
             if (_data.GroupOrder == null) _data.GroupOrder = new List<string>();
 
-            var seen = new HashSet<string>(_data.GroupOrder, StringComparer.OrdinalIgnoreCase);
+            var seen = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var k in _data.GroupOrder)
+                if (!seen.ContainsKey(k)) seen[k] = true;
+
             var missing = new List<string>();
             foreach (var k in _data.Groups.Keys)
-                if (!seen.Contains(k)) missing.Add(k);
+                if (!seen.ContainsKey(k)) missing.Add(k);
 
             if (missing.Count == 0) return;
             missing.Sort(StringComparer.OrdinalIgnoreCase);

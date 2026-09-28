@@ -25,6 +25,7 @@ namespace MenuPrio
                 Log.Info("launched: " + candidate.Target
                     + (string.IsNullOrEmpty(candidate.Args) ? "" : " " + candidate.Args)
                     + (proc != null ? " (pid " + proc.Id + ")" : ""));
+                if (proc != null) proc.Dispose();
                 return true;
             }
             catch (Exception ex)

@@ -161,12 +161,16 @@ if you edited it, use tray -> **Import rules.ini** to merge again.
 ### Memory
 
 The idle process is deliberately small: the tray window, popup menu and message
-loop are native Win32 (no `System.Windows.Forms`), and `history.json` is
-written by a small built-in JSON writer/reader (no `System.Web.Extensions`).
-WinForms and System.Drawing only load when you open the Priorities window, and
-the working set is trimmed with `EmptyWorkingSet` after start and every five
-minutes. Measured on Windows 11: ~8 MB working set / ~18 MB private idle,
-~33 MB working set with the window open.
+loop are native Win32 (no `System.Windows.Forms`), `history.json` is written by
+a small built-in JSON writer/reader (no `System.Web.Extensions`), and even
+`System.Core` stays unloaded. WinForms and System.Drawing only load when you
+open the Priorities window, and the process collects garbage and trims its
+working set every minute and right after the window closes.
+
+Measured on Windows 11 (200% scaling): idle **~4-8 MB** working set (private
+working set as shown by Task Manager), **~19 MB** private bytes; a bare .NET
+Framework exe that does nothing measures ~2 MB / ~9 MB, so there is not much
+left to win without leaving the .NET runtime.
 
 ## Known limitations
 
